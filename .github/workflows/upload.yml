@@ -1,0 +1,40 @@
+name: Daily JSON to Google Drive
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '30 19 * * *'
+      timezone: 'Asia/Taipei'
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: daily-json-to-drive
+  cancel-in-progress: false
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: projects/40450699519/locations/global/workloadIdentityPools/github/providers/daily-json-to-drive
+          service_account: my-auto-tools-drive-466@project-471d58b6-37a4-461d-859.iam.gserviceaccount.com
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run upload script
+        run: python main.py
