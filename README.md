@@ -21,23 +21,29 @@
 
 `data` 裡面保留 5 份原始 JSON 內容，不改欄位、不改值。
 
+## GitHub Secrets
+
+到 repo：
+**Settings → Secrets and variables → Actions**
+
+新增 3 個 repository secrets：
+- `GOOGLE_CLIENT_ID`
+- `GOOGLE_CLIENT_SECRET`
+- `GOOGLE_REFRESH_TOKEN`
+
 ## 第一次使用
 
-1. 建立 GitHub repo：`daily-json-to-drive`
-2. 把本資料夾全部上傳到 repo 根目錄。
+1. 用這個資料夾內容覆蓋 repo。
+2. 到 GitHub repo 的 **Settings → Secrets and variables → Actions**，新增 3 個 secrets。
 3. 到 GitHub repo 的 **Actions** 頁面，啟用 workflows。
 4. 手動執行一次 **Daily JSON to Google Drive**。
 5. 到 Google Drive 檢查有沒有出現 `daily_YYYYMMDD.json`。
 
-## 已內建設定
+## 重要
 
-- Workload Identity Provider  
-  `projects/40450699519/locations/global/workloadIdentityPools/github/providers/daily-json-to-drive`
-- Service Account  
-  `my-auto-tools-drive-466@project-471d58b6-37a4-461d-859.iam.gserviceaccount.com`
-- Drive Folder ID  
-  `1zEkCW3lUWbAIa65XHfINbLDhCKUt-9pY`
+如果你的 OAuth app 還是 **Testing**，refresh token 可能在 7 天後失效。請把 Google Auth Platform 的 publishing status 改成 **In production**，再重拿一次 refresh token。
 
-## 重跑行為
+## 目前指定資料夾
 
-如果同一天的 `daily_YYYYMMDD.json` 已存在，就會直接更新，不會重複新增第二份。
+程式已固定使用這個 Google Drive folder ID：
+`1zEkCW3lUWbAIa65XHfINbLDhCKUt-9pY`
