@@ -8,15 +8,17 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-import google.auth
+import requests
+from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
-import requests
+from google.auth.transport.requests import Request
 
 TAIPEI_TZ = ZoneInfo("Asia/Taipei")
 UTC_TZ = ZoneInfo("UTC")
 
 FOLDER_ID = "1zEkCW3lUWbAIa65XHfINbLDhCKUt-9pY"
+SCOPES = ["https://www.googleapis.com/auth/drive"]
 SOURCES: dict[str, str] = {
     "tw_stock_futures_summary": "https://mis23ms.github.io/tw-stock-futures/summary.json",
     "tw_stock_options_options_data": "https://mis23ms.github.io/tw-stock-options/options_data.json",
@@ -28,6 +30,13 @@ SOURCES: dict[str, str] = {
 
 class FetchError(RuntimeError):
     pass
+
+
+def require_env(name: str) -> str:
+    value = os.getenv(name, "").strip()
+    if not value:
+        raise RuntimeError(f"Missing required environment variable: {name}")
+    return value
 
 
 def fetch_json(url: str, timeout: int = 60) -> Any:
@@ -69,25 +78,28 @@ def write_local_file(payload: dict[str, Any], filename: str) -> Path:
 
 
 def get_drive_service():
-    scopes = ["https://www.googleapis.com/auth/drive"]
-    credentials, _ = google.auth.default(scopes=scopes)
-    return build("drive", "v3", credentials=credentials, cache_discovery=False)
+    client_id = require_env("GOOGLE_CLIENT_ID")
+    client_secret = require_env("GOOGLE_CLIENT_SECRET")
+    refresh_token = require_env("GOOGLE_REFRESH_TOKEN")
+
+    creds = Credentials(
+        token=None,
+        refresh_token=refresh_token,
+        token_uri="https://oauth2.googleapis.com/token",
+        client_id=client_id,
+        client_secret=client_secret,
+        scopes=SCOPES,
+    )
+    creds.refresh(Request())
+    return build("drive", "v3", credentials=creds, cache_discovery=False)
 
 
 def find_existing_file(service, folder_id: str, filename: str) -> str | None:
-    query = (
-        f"name = '{filename}' and '{folder_id}' in parents and trashed = false"
-    )
+    escaped_name = filename.replace("'", r"\'")
+    query = f"name = '{escaped_name}' and '{folder_id}' in parents and trashed = false"
     response = (
         service.files()
-        .list(
-            q=query,
-            spaces="drive",
-            includeItemsFromAllDrives=True,
-            supportsAllDrives=True,
-            fields="files(id, name)",
-            pageSize=10,
-        )
+        .list(q=query, spaces="drive", fields="files(id, name)", pageSize=10)
         .execute()
     )
     files = response.get("files", [])
@@ -105,7 +117,6 @@ def upload_to_drive(local_path: Path, filename: str, folder_id: str) -> dict[str
             .update(
                 fileId=existing_file_id,
                 media_body=media,
-                supportsAllDrives=True,
                 fields="id, name, webViewLink, webContentLink",
             )
             .execute()
@@ -113,16 +124,12 @@ def upload_to_drive(local_path: Path, filename: str, folder_id: str) -> dict[str
         result["action"] = "updated"
         return result
 
-    metadata = {
-        "name": filename,
-        "parents": [folder_id],
-    }
+    metadata = {"name": filename, "parents": [folder_id]}
     result = (
         service.files()
         .create(
             body=metadata,
             media_body=media,
-            supportsAllDrives=True,
             fields="id, name, webViewLink, webContentLink",
         )
         .execute()
