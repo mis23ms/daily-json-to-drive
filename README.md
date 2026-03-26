@@ -47,3 +47,33 @@
 
 程式已固定使用這個 Google Drive folder ID：
 `1zEkCW3lUWbAIa65XHfINbLDhCKUt-9pY`
+
+## 補充說明：daily-json-to-drive 目前實作狀態
+
+### 目的
+每天自動抓 5 份 JSON，合併成一個 `daily_YYYYMMDD.json`，再上傳到指定 Google Drive 資料夾。
+
+### 目前已確認可運作的流程
+使用的是：
+
+**GitHub Actions + Google OAuth refresh token + My Drive 指定資料夾上傳**
+
+不是用：
+- Service Account 上傳
+- Shared Drive
+- Workload Identity Federation 寫入 Drive
+
+### 為什麼不用 Service Account
+原本試過 Service Account + Google Drive API，但因為此帳號是個人 Google 帳號，沒有 Shared Drives，且 Service Account 沒有 My Drive 儲存配額，會出現：
+
+`Service Accounts do not have storage quota`
+
+因此改為：
+
+**OAuth Desktop App + refresh token + GitHub Secrets**
+
+### 目前使用的 Google Drive 目標資料夾
+`FOLDER_ID` 目前為：
+
+```python
+FOLDER_ID = "15yBtPRfwJ7A2i63F9TGEebrTpbmZQo9D"
