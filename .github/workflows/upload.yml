@@ -8,7 +8,6 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 concurrency:
   group: daily-json-to-drive
@@ -17,16 +16,14 @@ concurrency:
 jobs:
   upload:
     runs-on: ubuntu-latest
+    env:
+      GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+      GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+      GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v3
-        with:
-          workload_identity_provider: projects/40450699519/locations/global/workloadIdentityPools/github/providers/daily-json-to-drive
-          service_account: my-auto-tools-drive-466@project-471d58b6-37a4-461d-859.iam.gserviceaccount.com
 
       - name: Set up Python
         uses: actions/setup-python@v5
