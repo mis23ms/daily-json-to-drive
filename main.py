@@ -9,22 +9,36 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 import requests
+from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
-from google.auth.transport.requests import Request
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 TAIPEI_TZ = ZoneInfo("Asia/Taipei")
 UTC_TZ = ZoneInfo("UTC")
 
 FOLDER_ID = "15yBtPRfwJ7A2i63F9TGEebrTpbmZQo9D"
 SCOPES = ["https://www.googleapis.com/auth/drive"]
-SOURCES: dict[str, str] = {
-    "tw_stock_futures_summary": "https://mis23ms.github.io/tw-stock-futures/summary.json",
-    "tw_stock_options_options_data": "https://mis23ms.github.io/tw-stock-options/options_data.json",
-    "tw_stock_06_summary": "https://mis23ms.github.io/tw-stock-06/summary.json",
-    "tw_stock_06_data": "https://raw.githubusercontent.com/mis23ms/tw-stock-06/main/docs/data.json",
-    "us_market_tracker_etf": "https://mis23ms.github.io/us-market-tracker/data/etf.json",
+
+SOURCES: dict[str, list[str]] = {
+    "tw_stock_futures_summary": [
+        "https://mis23ms.github.io/tw-stock-futures/summary.json",
+    ],
+    "tw_stock_options_options_data": [
+        "https://mis23ms.github.io/tw-stock-options/options_data.json",
+    ],
+    "tw_stock_06_summary": [
+        "https://mis23ms.github.io/tw-stock-06/summary.json",
+    ],
+    "tw_stock_06_data": [
+        "https://mis23ms.github.io/tw-stock-06/data.json",
+        "https://raw.githubusercontent.com/mis23ms/tw-stock-06/main/docs/data.json",
+    ],
+    "us_market_tracker_etf": [
+        "https://mis23ms.github.io/us-market-tracker/data/etf.json",
+    ],
 }
 
 
@@ -39,13 +53,44 @@ def require_env(name: str) -> str:
     return value
 
 
-def fetch_json(url: str, timeout: int = 60) -> Any:
-    response = requests.get(url, timeout=timeout)
-    response.raise_for_status()
-    try:
-        return response.json()
-    except json.JSONDecodeError as exc:
-        raise FetchError(f"Invalid JSON from {url}: {exc}") from exc
+def build_session() -> requests.Session:
+    retry = Retry(
+        total=5,
+        connect=5,
+        read=5,
+        backoff_factor=2,
+        status_forcelist=[429, 500, 502, 503, 504],
+        allowed_methods=frozenset(["GET"]),
+        raise_on_status=False,
+    )
+    adapter = HTTPAdapter(max_retries=retry)
+
+    session = requests.Session()
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    session.headers.update({"User-Agent": "daily-json-to-drive/1.0"})
+    return session
+
+
+SESSION = build_session()
+
+
+def fetch_json_from_candidates(name: str, urls: list[str], timeout: int = 60) -> Any:
+    last_error: Exception | None = None
+
+    for url in urls:
+        try:
+            response = SESSION.get(url, timeout=timeout)
+            response.raise_for_status()
+            try:
+                return response.json()
+            except json.JSONDecodeError as exc:
+                raise FetchError(f"Invalid JSON from {url}: {exc}") from exc
+        except (requests.RequestException, FetchError) as exc:
+            print(f"[WARN] {name} failed from {url}: {exc}")
+            last_error = exc
+
+    raise FetchError(f"All source URLs failed for {name}: {last_error}")
 
 
 def build_output() -> tuple[dict[str, Any], str]:
@@ -61,8 +106,8 @@ def build_output() -> tuple[dict[str, Any], str]:
         "data": {},
     }
 
-    for key, url in SOURCES.items():
-        combined["data"][key] = fetch_json(url)
+    for key, urls in SOURCES.items():
+        combined["data"][key] = fetch_json_from_candidates(key, urls)
 
     return combined, filename
 
